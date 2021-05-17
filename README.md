@@ -106,11 +106,11 @@ $ kubectl apply -f 3-elasticsearch-sts.yaml
 ```
 We can follow the creation by running the following command: 
 ```shell
-$ kubectl rollout status sts/es-cluster -n ef-logging
+$ kubectl rollout status sts/es-cluster -n efk-logging
 ```
 We should also be able to see all elasticsearch pods running in the provided namespace:
 ```shell
-$ kubectl get pods -n ef-logging
+$ kubectl get pods -n efk-logging
 ```
 
 Prior to the StatefulSet installation we talked about a headless service not returning a single IP address. We can verify
@@ -118,7 +118,7 @@ this by running a special Pod with DNS utilities, and run a command to perform a
 addresses backing the headless service:
 ```shell
 # install & run the DNSUtils Pod in the correct namespace, so that it has access to the headless service!
-$ kubectl run dnsutil --image=tutum/dnsutils -n efk-logging -- sleep infinity
+$ kubectl run dnsutils --image=tutum/dnsutils -n efk-logging -- sleep infinity
 # run nslookup command against the elasticsearch service, should return multiple IP's
 $ kubectl exec dnsutils -n efk-logging -- nslookup elasticsearch
 ```
@@ -130,13 +130,13 @@ $ kubectl get endpoints elasticsearch -n efk-logging
 $ kubectl describe endpoints elasticsearch -n efk-logging
 ```
 Not only will Kubernetes assign each Service/Pod with its own IP address it also adds DNS records. This makes it easier
-for clients to find those services instead of using IP addresses. Go to kubernetes.io learn more 
+for clients to find those services instead of using IP addresses. Go to kubernetes.io to learn more about
 [Kubernetes DNS](https://kubernetes.io/docs/concepts/services-networking/dns-pod-service/).
 
 Using the same DNSUtils Pod we can extract DNS information by running a nslookup on one of the Elasticsearch Pods:
 ```shell
 # returns the FQDN for the pod, remember to run nslookup first on the headless service
-$ kubectl exec tmp01 -n kube-logging -- nslookup <pod-ip-address>
+$ kubectl exec dnsutils -n kube-logging -- nslookup <pod-ip-address>
 ```
 The result should follow a pattern that looks like this: `{pod-name}.{service-name}.{namespace}.svc.cluster.local`. In our
 case it should resemble the following values: `es-cluster-[0,1,2].elasticsearch.efk-logging.svc.cluster.local`. Running
@@ -144,7 +144,7 @@ the StatefulSet with multiple replicas creates Pods with the supplied name follo
 in the DNS entries. Kubernetes also uses this number when doing RollingUpdates as it will start with the highest number 
 and ending with 0.
 
-### Elasticsearch cluster RES-API
+### Elasticsearch cluster REST-API
 Now that our Elasticsearch cluster is running we can access its REST API and verify everything is running as expected. Doing
 so allows us to see how our running cluster configuration looks like and what the health state is. To make this REST API 
 available we made `port 9200` available while creating the headless service. Since we cannot access the REST API service
@@ -160,12 +160,12 @@ $ curl -XGET 'localhost:9200/_cluster/health?pretty'
 # we can also ask information about the running nodes on our cluster
 $ curl -X GET "localhost:9200/_cluster/state/nodes?pretty"
 ```
-To get some cluster topology in view we can run:
+To get some cluster topology in view, run:
 ```shell
 # the result contains IP addresses, roles and metrics
 curl -X GET "localhost:9200/_cat/nodes?v"
 ```
-We should be able to see node- IP addresses, metrics, roles even the current master. See
+We should see node- IP addresses, metrics, roles and current master node. See
 `cat nodes` from [CAT API](https://www.elastic.co/guide/en/elasticsearch/reference/7.x/cat-nodes.html) and customize the 
 output by adding headers to the request.
 
@@ -189,7 +189,7 @@ apply port-forwarding.
 
 ```shell
 # first we must retrieve the node name
-$ kubectl get nodes -n ef-logging
+$ kubectl get nodes -n efk-logging
 # copy-past the kibana-{id} node name in the following command
 $ kubeceltl port-forward <kibana-node> -n efk-logging 5601:5601
 ```
@@ -228,7 +228,7 @@ first define an index pattern we would like to explore in Kibana. Simply put an 
 of related JSON documents. FluentD provides us with those JSON documents and enriches it with Kubernetes fields we can
 use.
 
-In Kibana we need to click on the `Discover` icon on the left-hand navigation to start the Index creation process.
+In Kibana we need to click on the `Discover` icon on the left-hand navigation, this starts the Index creation process.
 ![Create Index](images/kibana-create-index1.png)
 If you take closer a look at the image above (taken days later running the cluster), you will see some available indices. 
 You can then match your index pattern based on that, and in our case that would be `logstash-*`.
@@ -241,10 +241,10 @@ Click the `Discover` button again, the output should resemble something like thi
 ![Discover Index](images/kibana-index-discover.png)
 
 Read the [Kibana Guide](https://www.elastic.co/guide/en/kibana/current/index.html) to learn more about Kibana, includes 
-a Quick start and other useful information like how to create dashboards to visualize your data.
+a Quick Start section and other useful information like, how to create dashboards to visualize your log data.
 
 Final step complete! The 3-node Elasticsearch cluster is up and running and integrated with FluentD to capture log data.
-We've also configured Kibana with Elasticsearch, so that we can start analyzing/visualizing data.
+We've also configured Kibana with Elasticsearch, so that we can start analyzing/visualizing log data.
 
 ## Launch Counter Pods & analyze log data
 The real final piece in this setup is capturing our application data. Therefore, we will deploy a small application to 
