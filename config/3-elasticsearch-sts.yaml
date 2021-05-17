@@ -39,14 +39,14 @@ spec:
             valueFrom:
               fieldRef:
                 fieldPath: metadata.name
-          - name: discovery.seed_hosts
+          - name: discovery.seed_hosts #list of master eligible nodes that will seed node discovery process
             value: "es-cluster-0.elasticsearch,es-cluster-1.elasticsearch,es-cluster-2.elasticsearch"
-          - name: cluster.initial_master_nodes
+          - name: cluster.initial_master_nodes #list of master eligible nodes that will participate in master election
             value: "es-cluster-0,es-cluster-1,es-cluster-2"
           - name: ES_JAVA_OPTS
             value: "-Xms512m -Xmx512m"
       initContainers:
-      - name: fix-permissions
+      - name: fix-permissions #change owner of group to elasticsearch, defaults to root
         image: busybox
         command: ["sh", "-c", "chown -R 1000:1000 /usr/share/elasticsearch/data"]
         securityContext:
@@ -54,12 +54,12 @@ spec:
         volumeMounts:
         - name: elasticsearch-data
           mountPath: /usr/share/elasticsearch/data
-      - name: increase-vm-max-map
+      - name: increase-vm-max-map #default OS mmaps counts could be to low
         image: busybox
         command: ["sysctl", "-w", "vm.max_map_count=262144"]
         securityContext:
           privileged: true
-      - name: increase-fd-ulimit
+      - name: increase-fd-ulimit #file descriptors, only relevant for MacOs and Linux
         image: busybox
         command: ["sh", "-c", "ulimit -n 65536"]
         securityContext:

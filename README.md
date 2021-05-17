@@ -13,7 +13,7 @@ Docker Desktop with Kubernetes support is available for:
 * Mac OS (Sierra 10.12 minimum)
 
 Before starting, let's have a look at what we will be creating.
-<paste image>
+![EFK Cluster Logging](images/efk-cluster-logging-setup.png)
 
 ## Enable Kubernetes Support
 The following page https://docs.docker.com/desktop/kubernetes/ contains information on how to enable Kubernetes on
@@ -36,7 +36,7 @@ source <(kubectl completion zsh)
 Information on the ZSH configuration can be found [here](https://kubernetes.io/docs/tasks/tools/included/optional-kubectl-configs-zsh/).
 The folks at Kubernetes.io have also provided us with a [Kubectl cheatsheet](https://kubernetes.io/docs/reference/kubectl/cheatsheet/).
 
-## Verify Single-Node Kubernetes cluster is up
+## Verify Single-Node Kubernetes cluster is running
 Once Kubernetes is enabled, we can start interacting with it using `kubectl`.
 
 Let's check how many nodes our cluster has. The result should contain 1 (single-node cluster): 
@@ -100,6 +100,8 @@ StatefulSet. It provides pods with a stable identity and grants them stable pers
 stable persistent storage to persist data between Pod rescheduling and restarts. To learn more about 
 [StatefulSets](https://kubernetes.io/docs/concepts/workloads/controllers/statefulset/) visit the kubernetes.io website.
 
+![Kubernetes StatefulSet](images/kubernetes-statefulset.png)
+
 To create the Elasticsearch StatefulSet:
 ```shell
 $ kubectl apply -f 3-elasticsearch-sts.yaml
@@ -113,7 +115,32 @@ We should also be able to see all elasticsearch pods running in the provided nam
 $ kubectl get pods -n efk-logging
 ```
 
-Prior to the StatefulSet installation we talked about a headless service not returning a single IP address. We can verify
+#### Init Containers 
+Using the `initContainers` section in the StatefulSet we can apply 
+[Important System Configuration](https://www.elastic.co/guide/en/elasticsearch/reference/current/system-config.html) 
+settings before launching the ElasticSearch containers. We need to do this according to the documentation to prevent issues
+when running the Elasticsearch cluster.
+
+#### Volume Claim Templates
+Last but not least the StatefulSet needs some form of storage which is defined under `volumeClaimTemplates`. Under the hood
+Kubernetes creates the PersistentVolumeClaim and PersistentVolume resources. In our example we omitted the `storageClassName`
+field under `volumeClaimTemplates.spec` so the default of `hostPath` is chosen. Kubernetes supports `hostPath` for 
+development and testing on a single-node cluster. A hostPath PersistentVolume uses a file or directory on the Node to 
+emulate network-attached storage. Read [Storage Classes](https://kubernetes.io/docs/concepts/storage/storage-classes/) 
+to learn about supported storage types.
+
+To get information about the PersistentVolumeClaim pvc, run:
+```shell
+$ kubectl get pvc -n efk-logging
+```
+The following will display the PersistentVolume pv:
+```shell
+$ kubectl get pv -n efk-logging
+```
+As a result we should have ended up with 3 pvc's total, one for each node in the Elasticsearch cluster.
+
+#### Resolving DNS
+Prior to rolling out the StatefulSet we talked about a headless service not returning a single IP address. We can verify
 this by running a special Pod with DNS utilities, and run a command to perform a service lookup to obtain all the Pod IP 
 addresses backing the headless service:
 ```shell
@@ -136,7 +163,7 @@ for clients to find those services instead of using IP addresses. Go to kubernet
 Using the same DNSUtils Pod we can extract DNS information by running a nslookup on one of the Elasticsearch Pods:
 ```shell
 # returns the FQDN for the pod, remember to run nslookup first on the headless service
-$ kubectl exec dnsutils -n kube-logging -- nslookup <pod-ip-address>
+$ kubectl exec dnsutils -n efk-logging -- nslookup <pod-ip-address>
 ```
 The result should follow a pattern that looks like this: `{pod-name}.{service-name}.{namespace}.svc.cluster.local`. In our
 case it should resemble the following values: `es-cluster-[0,1,2].elasticsearch.efk-logging.svc.cluster.local`. Running
@@ -196,27 +223,31 @@ $ kubeceltl port-forward <kibana-node> -n efk-logging 5601:5601
 Open a browser and go to <http://localhost:5601>, you should see Kibana loading up. Don't do anything further at
 this point. We will configure an index later.
 
-## Creating the FluentD DeamonSet
+## Creating the FluentD DaemonSet
 In this final step we will start rolling out the FluentD log collector. We will do this by introducing, yet again, a new 
-resource type, the DeamonSet. Kubernetes will roll out a copy of this Pod(node-logging agent) on each node in the Kubernetes 
+resource type, the DaemonSet. Kubernetes will roll out a copy of this Pod(node-logging agent) on each node in the Kubernetes 
 cluster. The idea behind this solution is that the logging-agent running as a container in a Pod will have access to
-a directory with log files from all the application containers on that Kubernetes node. All running containers will write
-stdout and stderr with no agreed format. The logging-agent collect these logs and forward them to the aggregator.
+a directory with log files from all the application containers on that Kubernetes node. The logging-agent will collect and
+parse (supports formats like MySQL, Apache and many more) them and ship them to a new destination like Elasticsearch, 
+Amazone S3 or a third-party log management solution.
 
-For other approaches read [Cluster-level logging](https://kubernetes.io/docs/concepts/cluster-administration/logging/#using-a-node-logging-agent).
+Read [Cluster-level logging](https://kubernetes.io/docs/concepts/cluster-administration/logging/#cluster-level-logging-architectures)
+for other approaches.
 
-To roll out the FluentD DeamonSet, run the following command:
+![DaemonSet](images/kubernetes-daemonset.png)
+
+To roll out the FluentD DaemonSet, run the following command:
 ```shell
 $ kubectl apply -f 5-fluentd.yaml
 ```
-Looking at the FluentD DeamonSet configuration we just rolled out, you'll see that other resource types were needed, like 
+Looking at the FluentD DaemonSet configuration we just rolled out, you'll see that other resource types were needed, like 
 the ServiceAccount, ClusterRole and ClusterRoleBinding. All these resources are needed to cover the following:
 * ServiceAccount: Provides FluentD with access to the Kubernetes-API
 * ClusterRole: Grants permissions (get, list and watch) on the Pods and Namespaces. In other words grants access to other
 cluster-scoped Kubernetes resources like Nodes
 * ClusterRoleBinding: Binds ServiceAccount to the ClusterRole. Grants ServiceAccount permissions listed in the ClusterRole
 
-Let's verify the DeamonSet was rolled out successfully:
+Let's verify the DaemonSet was rolled out successfully:
 ```shell
 # should return 1 FluentD instance
 $ kubectl get ds -n efk-logging
