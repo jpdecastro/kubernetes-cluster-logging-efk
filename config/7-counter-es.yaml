@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: counter-es
+spec:
+  containers:
+  - name: count
+    image: busybox
+    args: [/bin/sh, -c,
+            'i=0; while true; do echo "$i: Buenos dias, donde estan mis mensajes?? $(date)"; i=$((i+1)); sleep 10; done']
