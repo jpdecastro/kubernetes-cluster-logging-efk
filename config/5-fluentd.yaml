@@ -65,6 +65,14 @@ spec:
             value: "http"
           - name: FLUENTD_SYSTEMD_CONF
             value: disable
+          - name: FLUENT_ELASTICSEARCH_LOGSTASH_FORMAT
+            value: "true"
+          - name: FLUENT_ELASTICSEARCH_LOGSTASH_INDEX_NAME
+            value: "logstash"
+          - name: FLUENT_CONTAINER_TAIL_EXCLUDE_PATH
+            value: /var/log/containers/fluentd-*
+          - name: FLUENT_CONTAINER_TAIL_PARSER_TYPE
+            value: /^(?<time>.+) (?<stream>stdout|stderr) [^ ]* (?<log>.*)$/
         resources:
           limits:
             memory: 512Mi
